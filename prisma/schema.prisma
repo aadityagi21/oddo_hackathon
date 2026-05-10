@@ -1,0 +1,190 @@
+// Traveloop — relational model for multi-city itineraries, budgets, and sharing
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum ExpenseCategory {
+  TRANSPORT
+  STAY
+  ACTIVITY
+  MEALS
+  OTHER
+}
+
+enum ActivityCategory {
+  SIGHTSEEING
+  FOOD
+  ADVENTURE
+  CULTURE
+  RELAXATION
+  NIGHTLIFE
+  SHOPPING
+  OTHER
+}
+
+enum PackingCategory {
+  CLOTHING
+  DOCUMENTS
+  ELECTRONICS
+  TOILETRIES
+  OTHER
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  imageUrl     String?
+  language     String   @default("en")
+  role         UserRole @default(USER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions          Session[]
+  trips             Trip[]
+  savedDestinations SavedDestination[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+/// Canonical cities for search & stops
+model City {
+  id          String  @id @default(cuid())
+  name        String
+  country     String
+  region      String?
+  costIndex   Int     @default(50) // 1–100 relative cost
+  popularity  Int     @default(50) // 1–100
+  description String?
+
+  @@unique([name, country])
+
+  stops            TripStop[]
+  catalogEntries   ActivityCatalog[]
+  savedBy        SavedDestination[]
+}
+
+model SavedDestination {
+  userId  String
+  cityId  String
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  city    City   @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  savedAt DateTime @default(now())
+
+  @@id([userId, cityId])
+}
+
+model Trip {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name          String
+  description   String?
+  startDate     DateTime
+  endDate       DateTime
+  coverImageUrl String?
+  shareSlug     String    @unique
+  isPublic      Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  stops    TripStop[]
+  expenses TripExpense[]
+  packing  PackingItem[]
+  notes    TripNote[]
+}
+
+model TripStop {
+  id            String   @id @default(cuid())
+  tripId        String
+  trip          Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  cityId        String
+  city          City     @relation(fields: [cityId], references: [id])
+  sortOrder     Int      @default(0)
+  arrivalDate   DateTime
+  departureDate DateTime
+
+  activities StopActivity[]
+  expenses   TripExpense[]
+}
+
+/// Activities the user added to a stop (itinerary)
+model StopActivity {
+  id          String           @id @default(cuid())
+  tripStopId  String
+  tripStop    TripStop         @relation(fields: [tripStopId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  category    ActivityCategory @default(OTHER)
+  dayDate     DateTime // calendar day this activity belongs to
+  startTime   String? // "09:00"
+  endTime     String?
+  costEstimate Float           @default(0)
+  sortOrder   Int              @default(0)
+}
+
+/// Browse / add from catalog per city
+model ActivityCatalog {
+  id            String           @id @default(cuid())
+  cityId        String
+  city          City             @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  title         String
+  description   String?
+  category      ActivityCategory
+  costLevel     Int              @default(2) // 1 cheap .. 3 expensive
+  durationHours Float            @default(2)
+  imageUrl      String?
+}
+
+model TripExpense {
+  id          String          @id @default(cuid())
+  tripId      String
+  trip        Trip            @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  tripStopId  String?
+  tripStop    TripStop?       @relation(fields: [tripStopId], references: [id], onDelete: SetNull)
+  category    ExpenseCategory
+  label       String
+  amount      Float
+  expenseDate DateTime?
+  createdAt   DateTime        @default(now())
+}
+
+model PackingItem {
+  id        String          @id @default(cuid())
+  tripId    String
+  trip      Trip            @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  title     String
+  category  PackingCategory @default(OTHER)
+  packed    Boolean         @default(false)
+  sortOrder Int             @default(0)
+}
+
+model TripNote {
+  id         String    @id @default(cuid())
+  tripId     String
+  trip       Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  tripStopId String?
+  dayDate    DateTime?
+  content    String
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
